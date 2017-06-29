@@ -1,21 +1,17 @@
 <?php
-$auth_mw = function ($request, $response, $next) {
-	if ($request->getAttribute('route')->getArgument('oclcnumber')){
-		$oclcnumber = $request->getAttribute('route')->getArgument('oclcnumber');
-		$_SESSION['route'] = $this->get('router')->pathFor($request->getAttribute('route')->getName(), ['oclcnumber' => $oclcnumber]);
-	} elseif ($request->getParam('oclcnumber')) {
-		$oclcnumber = $request->getParam('oclcnumber');
-		$_SESSION['route'] = $this->get('router')->pathFor($request->getAttribute('route')->getName()) ."?" . http_build_query($request->getQueryParams());
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
+$auth_mw = function (Request $request, Silex\Application $app, $oclcnumber = null) {
+	if ($oclcnumber){
+		$_SESSION['route'] = $app['url_generator']->generate($request->get("_route"), array('oclcnumber' => $oclcnumber));
 	} else {
-		$oclcnumber = null;
-		$_SESSION['route'] = $this->get('router')->pathFor($request->getAttribute('route')->getName());
+		$oclcnumber = $request->get("oclcnumber");
+		$_SESSION['route'] = $app['url_generator']->generate($request->get("_route"), array('oclcnumber' => $oclcnumber));
 	}
 	
 	if (empty($_SESSION['accessToken']) || ($_SESSION['accessToken']->isExpired() && (empty($_SESSION['accessToken']->getRefreshToken()) || $_SESSION['accessToken']->isExpired()))){
-		$response = $response->withRedirect($this->get("wskey")->getLoginURL($this->get("config")['prod']['institution'], $this->get("config")['prod']['institution']));
-	} else {
-		$response = $next($request, $response);
-	}
-	
-	return $response;
+		$redirect = $app['wskey']->getLoginURL($app['config']['prod']['institution'], $app['config']['prod']['institution']);
+		return new RedirectResponse($redirect);
+	} 
 };

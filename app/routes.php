@@ -1,68 +1,96 @@
 <?php
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 // Add routes
 
 //display form
-$app->get('/', function ($request, $response, $args) {
-	return $this->view->render($response, 'search_form.html');
-})->setName('display_search_form');
+$app->get('/', function (Silex\Application $app) {
+	return $app['twig']->render('search_form.html');
+})->bind('display_search_form');
 
 //display bib route
-$app->get('/bib[/{oclcnumber}]', function ($request, $response, $args){
-	if (isset($args['oclcnumber'])){
-		$oclcnumber = $args['oclcnumber'];
-		$_SESSION['route'] = $this->get('router')->pathFor($request->getAttribute('route')->getName(), ['oclcnumber' => $args['oclcnumber']]);
-	} elseif ($request->getParam('oclcnumber')) {
-		$oclcnumber = $request->getParam('oclcnumber');
-		$_SESSION['route'] = $this->get('router')->pathFor($request->getAttribute('route')->getName()) ."?" . http_build_query($request->getQueryParams());
-	} else {
-		return $this->view->render($response, 'error.html', [
+$app->get('/bib/{oclcnumber}', function ($oclcnumber, Silex\Application $app, Request $request){
+	$_SESSION['route'] = $app['url_generator']->generate($request->get("_route"), array('oclcnumber' => $oclcnumber));
+	if (empty($oclcnumber)){
+		return $app['twig']->render('error.html', [
 				'error' => 'No OCLC Number present',
-				'error_message' => 'Sorry you did not pass in an OCLC Number'
+				'error_description' => 'Sorry you did not pass in an OCLC Number',
+				'oclcnumber' => null
 		]);
 	}
 	$bib = Bib::find($oclcnumber, $_SESSION['accessToken']);
 	
 	if (is_a($bib, "Bib")){
 		
-		return $this->view->render($response, 'bib.html', [
+		return $app['twig']->render('bib.html', [
 				'bib' => $bib
 		]);
 	}else {
-		return $this->view->render($response, 'error.html', [
+		return $app['twig']->render('error.html', [
 				'error' => $bib->getStatus(),
 				'error_message' => $bib->getMessage(),
-				'oclcnumber' => $args['oclcnumber']
+				'oclcnumber' => $oclcnumber
 		]);
 	}
-})->setName('display_bib')->add($auth_mw);
+})->bind('display_bib')->before($auth_mw);
 
-$app->get('/catch_auth_code', function ($request, $response, $args) {
+//display bib route used for searching
+$app->match('/bib', function (Silex\Application $app, Request $request){
+	$oclcnumber = $request->get('oclcnumber');
+	$_SESSION['route'] = $app['url_generator']->generate($request->get("_route"), array('oclcnumber' => $request->get('oclcnumber')));
+	if (empty($oclcnumber)){
+		return $app['twig']->render('error.html', [
+				'error' => 'No OCLC Number present',
+				'error_description' => 'Sorry you did not pass in an OCLC Number',
+				'oclcnumber' => null
+		]);
+	}
+	$bib = Bib::find($oclcnumber, $_SESSION['accessToken']);
+	
+	if (is_a($bib, "Bib")){
+		
+		return $app['twig']->render('bib.html', [
+				'bib' => $bib
+		]);
+	}else {
+		return $app['twig']->render('error.html', [
+				'error' => $bib->getStatus(),
+				'error_message' => $bib->getMessage(),
+				'oclcnumber' => $oclcnumber
+		]);
+	}
+})->method('GET|POST')->bind('bib_search_results')->before($auth_mw);
+
+$app->get('/catch_auth_code', function (Silex\Application $app, Request $request) {
 	if (isset($_SESSION['route'])){
 		$route = $_SESSION['route'];
 	} else {
 		$route = '/';
 	}
 	
-	if ($request->getParam('code')){
+	if ($request->get('code')){
 		try{
-			$_SESSION['accessToken'] = $this->get("wskey")->getAccessTokenWithAuthCode($request->getParam('code'), $this->get("config")['prod']['institution'], $this->get("config")['prod']['institution']);
-			return $response->withRedirect($route);
+			$_SESSION['accessToken'] = $app['wskey']->getAccessTokenWithAuthCode($request->get('code'), $app['config']['prod']['institution'], $app['config']['prod']['institution']);
+			return $app->redirect($route);
 		} catch(Exception $e) {
-			return $this->view->render($response, 'error.html', [
-					'error' => $e->getMessage()
+			return $app['twig']->render('error.html', [
+					'error' => $e->getMessage(),
+					'error_description' => '',
+					'oclcnumber' => null
 			]);
 		}
-	}elseif ($request->getParam('error')){
-		return $this->view->render($response, 'error.html', [
-				'error' => $request->getParam('error'),
-				'error_description' => $request->getParam('error_description')
+	}elseif ($request->get('error')){
+		return $app['twig']->render('error.html', [
+				'error' => $request->get('error'),
+				'error_description' => $request->get('error_description'),
+				'oclcnumber' => null
 		]);
 	}else {
-		return $response->withRedirect($route);
+		return $app->redirect($route);
 	}
-})->setName('catch_auth_code');
+})->bind('catch_auth_code');
 
-$app->get('/logoff', function ($request, $response, $args) {
-	$this->session->destroy();
-	return $response->withRedirect('/');
-})->setName('logoff');
+$app->get('/logoff', function (Silex\Application $app){
+	session_destroy();
+	return $app->redirect('/');
+})->bind('logoff');
