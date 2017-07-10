@@ -4,7 +4,7 @@ Feature: Catch Auth Code
   I want to establish a login session
   so that I can to view a bib record
   
-  @vcr_successAccessToken @success
+  @success
   Scenario: Successfully Get Access Token
     Given I am not following redirects
     When I go to "/catch_auth_code?code=auth_12384794"
